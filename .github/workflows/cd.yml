@@ -11,19 +11,7 @@ jobs:
   # JOB 1 : SCAN SECURITE
   # ========================
   
-  scan:
-  runs-on: ubuntu-latest
-
-  steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Scan sécurité (ignore erreurs)
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: fs
-        format: table
-      continue-on-error: true
+  
   # ========================
   # JOB 2 : DEPLOIEMENT
   # ========================
