@@ -1,0 +1,40 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches:
+      - prod
+
+jobs:
+
+  # ========================
+  # JOB 1 : SCAN SECURITE
+  # ========================
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Scan image (simulation)
+        run: echo "Scan sécurité OK"
+
+  # ========================
+  # JOB 2 : DEPLOIEMENT
+  # ========================
+  deploy:
+    needs: scan
+    runs-on: ubuntu-latest   # ou runner_prod si configuré
+
+    steps:
+      - name: Pull image depuis Docker Hub
+        run: docker pull ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal
+
+      - name: Stop ancien conteneur
+        run: docker stop intranet || true
+
+      - name: Supprimer ancien conteneur
+        run: docker rm intranet || true
+
+      - name: Lancer nouveau conteneur
+        run: |
+          docker run -d -p 80:80 --name intranet \
+          ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal
