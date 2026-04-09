@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
 
@@ -30,11 +29,6 @@ jobs:
           image-ref: ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:latest
           severity: 'CRITICAL,HIGH'
 
-      - name: Upload Trivy results
-        if: always()
-        with:
-
-      # ✅ CORRECTION: Scan réel des secrets
       - name: Run Gitleaks scan
         uses: gitleaks/gitleaks-action@v2
         env:
