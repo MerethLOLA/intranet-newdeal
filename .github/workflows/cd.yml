@@ -1,0 +1,48 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches:
+      - prod
+
+jobs:
+
+  # ========================
+  # JOB 1 : SCAN SECURITE
+  # ========================
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Login Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Scan image avec Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:latest
+          severity: CRITICAL
+          exit-code: 1   # ❗ bloque si vulnérabilité CRITICAL
+
+  # ========================
+  # JOB 2 : DEPLOIEMENT
+  # ========================
+  deploy:
+    needs: scan
+    runs-on: ubuntu-latest   # 👉 remplace par runner_prod si dispo
+
+    steps:
+      - name: Login Docker Hub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Pull image
+        run: docker pull ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:latest
+
+      - name: Stop ancien conteneur
+        run: docker stop intranet || true
+
+      - name: Supprimer ancien conteneur
+        run: docker rm intranet || true
+
+      - name: Lancer conteneur (port 80)
+        run: docker run -d -p 80:80 --name intranet ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:latest
