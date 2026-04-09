@@ -1,0 +1,2 @@
+# intranet-newdeal
+Examen Devops
