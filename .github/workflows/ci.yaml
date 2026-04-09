@@ -1,63 +1,121 @@
-name: CI Pipeline
+name: CI Pipeline - Dev
 
 on:
   push:
     branches:
       - dev
+  pull_request:
+    branches:
+      - dev
+
+permissions:
+  contents: read
+  security-events: write
+  packages: write
 
 jobs:
 
   # ========================
-  # JOB 1 : BUILD
+  # JOB 1: BUILD & PUSH
   # ========================
-  build:
+  build-and-push:
+    name: Build and Push to Docker Hub
     runs-on: ubuntu-latest
+
+    outputs:
+      image: ${{ steps.image.outputs.name }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build Docker image
-        run: docker build -t intranet-newdeal .
+      # ✅ CORRECTION 1: Login AVANT de build
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ✅ CORRECTION 2: Build et push en même temps
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:latest
+            ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:dev-${{ github.run_number }}
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:buildcache,mode=max
+
+      - name: Set image output
+        id: image
+        run: echo "name=${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:latest" >> $GITHUB_OUTPUT
+
+      - name: Build summary
+        run: |
+          echo "✅ Docker image built and pushed"
+          echo "Image: ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal:latest"
+          echo "Tags: latest, dev-${{ github.run_number }}"
+
 
   # ========================
-  # JOB 2 : SCAN SECURITE
+  # JOB 2: SCAN SECURITE
   # ========================
-  scan:
+  security-scan:
+    name: Security Scan
     runs-on: ubuntu-latest
-    needs: build
+    needs: build-and-push
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Scan vulnerabilities with Trivy
+      # ✅ CORRECTION 3: Scanner l'image pushée sur Docker Hub (pas locale!)
+      - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: intranet-newdeal
-          format: table
-          exit-code: 0
+          image-ref: ${{ needs.build-and-push.outputs.image }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
 
-      - name: Scan secrets
-        run: echo "Scan secrets..."
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      # ✅ CORRECTION 4: Utiliser Gitleaks réel au lieu d'un echo
+      - name: Run Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Security scan summary
+        run: echo "✅ Security scans completed"
+
 
   # ========================
-  # JOB 3 : PUSH DOCKER HUB
+  # JOB 3: VALIDATION
   # ========================
-  push:
+  validate:
+    name: Validate Image
     runs-on: ubuntu-latest
-    needs: scan
+    needs: security-scan
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Pull image from Docker Hub
+        run: docker pull ${{ needs.build-and-push.outputs.image }}
 
-      - name: Login Docker Hub
-        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Verify image exists
+        run: |
+          docker images | grep intranet-newdeal
+          echo "✅ Image successfully validated"
 
-      - name: Build image
-        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal .
-
-      - name: Push image
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/intranet-newdeal
-        
+      - name: CI Pipeline completed
+        run: |
+          echo "🎉 CI Pipeline completed successfully!"
+          echo "Image is ready for production deployment"
